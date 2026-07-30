@@ -1,4 +1,5 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
 local Window = Rayfield:CreateWindow({
    Name = "Visualised Uz Opensource",
    LoadingTitle = "Visualised Uz",
@@ -311,4 +312,3 @@ SettingsTab:CreateButton({
 
 InfoTab:CreateLabel("Idea By: Moress")
 InfoTab:CreateLabel("Created by: Venxggs")
-
