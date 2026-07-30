@@ -53,8 +53,6 @@ task.spawn(function()
                   target.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
                   target.Transparency = 0.5
                   target.CanCollide = false
-                  target.Massless = true
-                  target.CanTouch = false
                else
                   if TargetPart == "Head" then
                      target.Size = Vector3.new(1.2, 1.2, 1.2)
@@ -62,9 +60,6 @@ task.spawn(function()
                      target.Size = Vector3.new(2, 2, 1)
                   end
                   target.Transparency = 0
-                  target.CanCollide = true
-                  target.Massless = false
-                  target.CanTouch = true
                end
             end
          end
