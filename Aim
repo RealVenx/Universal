@@ -15,6 +15,7 @@ local InfoTab = Window:CreateTab("Info", 4483362458)
 
 local LocalPlayer = game.Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
 
 local HitboxEnabled = false
 local HitboxSize = 2
@@ -42,38 +43,30 @@ local function CheckTeam(player)
    return true
 end
 
-task.spawn(function()
-   while task.wait(0.1) do
-      for _, player in pairs(game.Players:GetPlayers()) do
-         if player ~= LocalPlayer and player.Character then
-            local char = player.Character
-            local target = char:FindFirstChild(TargetPart)
-            if target then
-               if HitboxEnabled and CheckTeam(player) then
-                  target.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
-                  target.Transparency = 0.5
-                  target.CanCollide = false
-                  target.Massless = true
-                  target.CanTouch = false
-                  
-                  if TargetPart == "Head" then
-                     for _, p in pairs(char:GetChildren()) do
-                        if p:IsA("BasePart") and p.Name ~= "Head" then
-                           p.CanCollide = false
-                        end
-                     end
-                  end
+-- Hitbox Mantiqi (Optimallashgan va Harakatni Cheklamaydi)
+RunService.RenderStepped:Connect(function()
+   for _, player in pairs(game.Players:GetPlayers()) do
+      if player ~= LocalPlayer and player.Character then
+         local char = player.Character
+         local target = char:FindFirstChild(TargetPart)
+         if target then
+            if HitboxEnabled and CheckTeam(player) then
+               target.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
+               target.Transparency = 0.5
+               target.CanCollide = false
+               target.Massless = true
+               target.CanTouch = false
+            else
+               if TargetPart == "Head" then
+                  target.Size = Vector3.new(1.2, 1.2, 1.2)
+                  target.CanCollide = true
                else
-                  if TargetPart == "Head" then
-                     target.Size = Vector3.new(1.2, 1.2, 1.2)
-                  else
-                     target.Size = Vector3.new(2, 2, 1)
-                  end
-                  target.Transparency = 0
-                  target.CanCollide = (TargetPart == "Head")
-                  target.Massless = false
-                  target.CanTouch = true
+                  target.Size = Vector3.new(2, 2, 1)
+                  target.CanCollide = false
                end
+               target.Transparency = 0
+               target.Massless = false
+               target.CanTouch = true
             end
          end
       end
