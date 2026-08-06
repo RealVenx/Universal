@@ -1,0 +1,376 @@
+-- El Paso: Texas Border Roleplay - Auto-Smuggle & Wash (v6.4 VisualisedUz)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+-- Hold duration'larni instant qilish
+local function makePromptsInstant()
+    for _, prompt in ipairs(workspace:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") then
+            prompt.HoldDuration = 0
+        end
+    end
+end
+
+makePromptsInstant()
+workspace.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("ProximityPrompt") then
+        descendant.HoldDuration = 0
+    end
+end)
+
+----------------------------------------------------------------------
+-- KOORDINATALAR
+----------------------------------------------------------------------
+
+local buyCFrame = CFrame.new(
+    -1855.38855, 3.57884288, 33.8109741, 
+    0.508478582, 2.5758077e-8, 0.861074626, 
+    -2.2750385e-8, 1, -1.64794e-8, 
+    -0.861074626, -1.1210358e-8, 0.508478582
+)
+
+local sellCFrame = CFrame.new(
+    3183.06177, 3.0999999, -207.191956, 
+    0, 0, 1, 
+    0, 1, -0, 
+    -1, 0, 0
+)
+
+local washCFrame = CFrame.new(
+    -1850.92859, 3.52884364, 76.1873016, 
+    0.964593232, 6.886046e-8, 0.26374203, 
+    -4.921323e-8, 1, -8.1100865e-8, 
+    -0.26374203, 6.524975e-8, 0.964593232
+)
+
+local autoFarmActive = false
+local isProcessing = false
+
+local buyList = {
+    {name = "Hot Dog", count = 2},
+    {name = "Fake Designer Bag", count = 3},
+    {name = "Sarsaparilla", count = 5},
+    {name = "Fake Watch", count = 3}
+}
+
+----------------------------------------------------------------------
+-- HELPER FUNKSIYALAR
+----------------------------------------------------------------------
+
+localPlayer.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoid = character:WaitForChild("Humanoid")
+end)
+
+local function getVehicleModel()
+    if humanoid and humanoid.SeatPart then
+        local current = humanoid.SeatPart
+        while current and current ~= workspace do
+            if current:IsA("Model") then
+                return current
+            end
+            current = current.Parent
+        end
+    end
+    return nil
+end
+
+local function smoothMoveVehicle(vehicle, destinationCFrame, duration)
+    local startCF = vehicle:GetPivot()
+    local startUnderground = startCF - Vector3.new(0, 25, 0)
+    local targetUnderground = destinationCFrame - Vector3.new(0, 25, 0)
+    
+    for _, part in ipairs(vehicle:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.AssemblyLinearVelocity = Vector3.zero
+            part.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+
+    local function lerpMove(fromCF, toCF, moveTime)
+        local elapsed = 0
+        while elapsed < moveTime do
+            local delta = RunService.Heartbeat:Wait()
+            elapsed = elapsed + delta
+            local alpha = math.clamp(elapsed / moveTime, 0, 1)
+            
+            vehicle:PivotTo(fromCF:Lerp(toCF, alpha))
+            if vehicle.PrimaryPart then
+                vehicle.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+            end
+        end
+    end
+
+    lerpMove(startCF, startUnderground, 1)
+    lerpMove(startUnderground, targetUnderground, duration)
+    lerpMove(targetUnderground, destinationCFrame, 1.5)
+    vehicle:PivotTo(destinationCFrame)
+end
+
+local function triggerPrompt(prompt)
+    if prompt and prompt:IsA("ProximityPrompt") then
+        prompt.HoldDuration = 0
+        prompt.MaxActivationDistance = 9999
+        fireproximityprompt(prompt)
+    end
+end
+
+local function getItemPrompt(itemName)
+    local smugglingItems = workspace:FindFirstChild("Smuggling") and workspace.Smuggling:FindFirstChild("Items")
+    if not smugglingItems then return nil end
+
+    for _, item in ipairs(smugglingItems:GetChildren()) do
+        if item.Name == itemName or string.find(item.Name, itemName) then
+            local main = item:FindFirstChild("Main")
+            if main then
+                local promptAtt = main:FindFirstChild("PromptAtt")
+                if promptAtt then
+                    local prompt = promptAtt:FindFirstChild("SmugglePurchasePrompt")
+                    if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled then
+                        return prompt
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function hasBriefcase()
+    local backpack = localPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") and string.find(item.Name:lower(), "briefcase") then
+                return true
+            end
+        end
+    end
+    if character then
+        for _, item in ipairs(character:GetChildren()) do
+            if item:IsA("Tool") and string.find(item.Name:lower(), "briefcase") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+----------------------------------------------------------------------
+-- MAIN LOOP
+----------------------------------------------------------------------
+
+local function startAutoFarmCycle()
+    if isProcessing or not autoFarmActive then return end
+
+    if not humanoid.SeatPart then
+        print("[Auto-Farm]: Mashinaga o'tirishingiz kutilmoqda...")
+        while not humanoid.SeatPart and autoFarmActive do
+            task.wait(0.5)
+        end
+    end
+
+    if not autoFarmActive then return end
+
+    local vehicle = getVehicleModel()
+    if not vehicle then return end
+
+    isProcessing = true
+
+    -- STEP 1: Fast Buy (0.6s cooldown)
+    print("[1/4] Sotib olish joyiga borilmoqda...")
+    smoothMoveVehicle(vehicle, buyCFrame, 1)
+    task.wait(0.5)
+
+    print("[1/4] Smuggle item'lar sotib olinmoqda (0.6s)...")
+    for _, req in ipairs(buyList) do
+        for i = 1, req.count do
+            if not autoFarmActive then break end
+            
+            local prompt = getItemPrompt(req.name)
+            if prompt then
+                triggerPrompt(prompt)
+                print("[BUY]: " .. req.name .. " (" .. i .. "/" .. req.count .. ")")
+            end
+            task.wait(0.6)
+        end
+    end
+
+    if not autoFarmActive then isProcessing = false return end
+
+    -- STEP 2: Move to Target CFrame & Continuous Prompt Fire
+    print("[2/4] Sotish joyiga borilmoqda (45s)...")
+    smoothMoveVehicle(vehicle, sellCFrame, 45)
+
+    print("[2/4] Mashinadan tushildi. Sell promptlar uzluksiz urilmoqda...")
+    local currentSeat = humanoid.SeatPart
+    humanoid.Sit = false
+    task.wait(0.5)
+
+    while not hasBriefcase() and autoFarmActive do
+        local sellFolder = workspace:FindFirstChild("Smuggling") and workspace.Smuggling:FindFirstChild("Sell")
+        
+        if sellFolder then
+            for _, desc in ipairs(sellFolder:GetDescendants()) do
+                if desc:IsA("ProximityPrompt") then
+                    triggerPrompt(desc)
+                end
+            end
+        else
+            for _, desc in ipairs(workspace:GetDescendants()) do
+                if desc:IsA("ProximityPrompt") and desc.Name:lower():find("sell") then
+                    triggerPrompt(desc)
+                end
+            end
+        end
+
+        if humanoid then
+            humanoid.Jump = true
+        end
+        task.wait(0.3)
+    end
+
+    if not autoFarmActive then isProcessing = false return end
+    print("[SUCCESS]: Briefcase inventarda paydo bo'ldi! Washing'ga ketilmoqda...")
+
+    if currentSeat and humanoid then
+        currentSeat:Sit(humanoid)
+    end
+    task.wait(1.5)
+
+    -- STEP 3: Money Wash
+    print("[3/4] Washing machine joyiga ketilmoqda (7s)...")
+    smoothMoveVehicle(vehicle, washCFrame, 7)
+
+    print("[3/4] Mashinadan tushib pul yuvilmoqda...")
+    currentSeat = humanoid.SeatPart
+    humanoid.Sit = false
+    task.wait(0.8)
+
+    if humanoid then humanoid.Jump = true end
+    
+    local washPrompt = workspace:FindFirstChild("Smuggling") 
+        and workspace.Smuggling:FindFirstChild("Laundering") 
+        and workspace.Smuggling.Laundering:FindFirstChild("Prompt") 
+        and workspace.Smuggling.Laundering.Prompt:FindFirstChild("SmuggleLaundryPrompt")
+
+    if washPrompt then
+        triggerPrompt(washPrompt)
+        print("[LAUNDRY]: Pul muvaffaqiyatli yuvildi!")
+    else
+        for _, desc in ipairs(workspace:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") and (desc.Name:lower():find("laundry") or desc.Name:lower():find("wash")) then
+                triggerPrompt(desc)
+                print("[LAUNDRY-ALT]: Yuvish prompti urildi!")
+                break
+            end
+        end
+    end
+    task.wait(2)
+
+    if currentSeat and humanoid then
+        currentSeat:Sit(humanoid)
+    end
+    task.wait(1.5)
+
+    -- STEP 4: Recycling
+    print("[4/4] Sotib olish joyiga qaytilmoqda...")
+    smoothMoveVehicle(vehicle, buyCFrame, 1)
+
+    print("[RECYCLING]: Sikl yakunlandi!")
+    task.wait(1)
+    isProcessing = false
+
+    if autoFarmActive then
+        startAutoFarmCycle()
+    end
+end
+
+----------------------------------------------------------------------
+-- GUI (VisualisedUz)
+----------------------------------------------------------------------
+
+local guiExists = CoreGui:FindFirstChild("VisualisedUzGui")
+if guiExists then guiExists:Destroy() end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "VisualisedUzGui"
+screenGui.Parent = CoreGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 240, 0, 160)
+mainFrame.Position = UDim2.new(0.05, 0, 0.4, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.Parent = mainFrame
+
+-- SARLAVHA (VisualisedUz)
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 25)
+title.Position = UDim2.new(0, 0, 0, 3)
+title.Text = "VisualisedUz"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 14
+title.Font = Enum.Font.SourceSansBold
+title.BackgroundTransparency = 1
+title.Parent = mainFrame
+
+-- YOUTUBE TEXT
+local ytLabel = Instance.new("TextLabel")
+ytLabel.Size = UDim2.new(1, 0, 0, 18)
+ytLabel.Position = UDim2.new(0, 0, 0, 26)
+ytLabel.Text = "Youtube: RealVenx"
+ytLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+ytLabel.TextSize = 11
+ytLabel.Font = Enum.Font.SourceSansItalic
+ytLabel.BackgroundTransparency = 1
+ytLabel.Parent = mainFrame
+
+-- TOGGLE BUTTON
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.85, 0, 0, 36)
+toggleBtn.Position = UDim2.new(0.075, 0, 0.35, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+toggleBtn.Text = "AUTO FARM: OFF"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.TextSize = 13
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.Parent = mainFrame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 6)
+btnCorner.Parent = toggleBtn
+
+-- OGOHLANTIRISH MATNI
+local warningLabel = Instance.new("TextLabel")
+warningLabel.Size = UDim2.new(0.9, 0, 0, 35)
+warningLabel.Position = UDim2.new(0.05, 0, 0.68, 0)
+warningLabel.Text = "Enable autofarm before spawning a vehicle!\n(Ban Risk, Use at your own risk)"
+warningLabel.TextColor3 = Color3.fromRGB(255, 180, 50)
+warningLabel.TextSize = 10
+warningLabel.Font = Enum.Font.SourceSansItalic
+warningLabel.BackgroundTransparency = 1
+warningLabel.TextWrapped = true
+warningLabel.Parent = mainFrame
+
+toggleBtn.MouseButton1Click:Connect(function()
+    autoFarmActive = not autoFarmActive
+    if autoFarmActive then
+        toggleBtn.Text = "AUTO FARM: ON"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        task.spawn(startAutoFarmCycle)
+    else
+        toggleBtn.Text = "AUTO FARM: OFF"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    end
+end)
